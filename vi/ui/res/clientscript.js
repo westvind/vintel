@@ -76,13 +76,17 @@ window.chan = new QWebChannel(qt.webChannelTransport, function(channel) {
             window.console.log('unknown status "'+last_state+'"');
         }
 
-        $text.attr('style', 'fill: '+fill_color);
-        $text.text(string);
-        $elm.find('a rect').attr('style', 'fill: ' + bg_color);
-
         if (stopTimer) {
+            $text.removeAttr('style');
+            $text.text('?');
+            $elm.find('a rect').removeAttr('style');
+
             console.log('disabled timer for system ' + $elm.find('.ss, .es').first().text());
             $elm.removeClass('stopwatch');
+        } else {
+            $text.attr('style', 'fill: '+fill_color);
+            $text.text(string);
+            $elm.find('a rect').attr('style', 'fill: ' + bg_color);
         }
     };
 
@@ -129,6 +133,21 @@ window.chan = new QWebChannel(qt.webChannelTransport, function(channel) {
 
         if (obj.type == 'load_svg') {
             document.getElementById('svg_container').innerHTML = obj.data;
+        } else if (obj.type == 'set_style') {
+            let $elm = $('#map_style');
+            if ($elm.length == 0) {
+                window.console.log('creating style element');
+                $elm = $(document.createElement('style'));
+                $elm.attr('type', 'text/css');
+                $elm.attr('id', 'map_style');
+                $('head').append($elm);
+            } else {
+                window.console.log('found style element');
+            }
+
+            //window.console.log('style: ' + obj.style);
+
+            $elm.html(obj.style);
         } else if (obj.type == 'status_change') {
             if (obj.status == 'alarm' || obj.status == 'clear') {
                 window.console.log('status change: system ' + obj.sysname + ' ' + obj.status);
@@ -235,7 +254,7 @@ window.chan = new QWebChannel(qt.webChannelTransport, function(channel) {
     window.alert('init done');
 
     $(document).on('click', 'use', function (e) {
-        window.alert('click!');
+        //window.alert('click!');
         let $use = $(this);
         let $sym = $('#def' + $use.attr('id').match(/\d+/)[0]);
         let $a   = $sym.find('a').first();

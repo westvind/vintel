@@ -17,36 +17,34 @@
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.  #
 ###########################################################################
 
+import base64
 import datetime
+import json
+import logging
+import pickle
 import sys
 import time
 import webbrowser
-import requests
-import pickle
-import base64
-import logging
-import json
 
+import qdarkstyle
+import requests
 from PyQt5 import QtGui, uic, QtCore, QtWidgets
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import QMessageBox, QMainWindow, QDialog, QWidget, QApplication, QActionGroup, QAction
-from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView
 from PyQt5 import QtWebChannel
 from PyQt5.Qt import QWebEngineScript
-
 from PyQt5.QtCore import QUrl, QPoint, pyqtSignal
+from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView
+from PyQt5.QtWidgets import QMessageBox, QMainWindow, QDialog, QWidget, QApplication, QActionGroup, QAction
 
-from vi.ui.systemtray import TrayContextMenu
-from vi.ui.threads import AvatarFindThread, KOSCheckerThread
-from vi.ui.threads import MapStatisticsThread
 import vi.version
 from vi import chatparser, dotlan, filewatcher
-from vi.chatparser.chatparser import ChatParser
 from vi import sound, drachenjaeger, evegate
-from vi.cache.cache import Cache
 from vi import states
-
+from vi.cache.cache import Cache
+from vi.chatparser.chatparser import ChatParser
 from vi.resources import resource_path
+from vi.ui.systemtray import TrayContextMenu
+from vi.ui.threads import AvatarFindThread, KOSCheckerThread
 
 VERSION = vi.version.VERSION
 DEBUG = True
@@ -149,7 +147,7 @@ class MainWindow(QMainWindow):
         self.custom_content_page = MainWindowPage()
         self.custom_content_page.sig_link_clicked.connect(self.map_link_clicked)
         self.map.setPage(self.custom_content_page)
-        self.map.page().set_svg(self.dotlan.svg)
+        self.map.page().set_svg(self.dotlan.svg_clean)
 
         self.map.contextmenu = TrayContextMenu(self.trayicon)
 
@@ -174,11 +172,20 @@ class MainWindow(QMainWindow):
             self.maptimer.timeout.connect(self.update_map)
             self.maptimer.start(1000)
 
+        self.evetimer = QtCore.QTimer(self)
+        # self.connect(self.maptimer, QtCore.SIGNAL("timeout()"), self.update_map)
+        self.evetimer.timeout.connect(self.update_evetime)
+        self.evetimer.start(1000)
+
         self.trayicon.sig_alarm_distance.connect(self.change_alarm_distance)
         self.trayicon.sig_change_frameless.connect(self.change_frameless)
 
         self.frameButton.clicked.connect(self.change_frameless)
         self.frameButton.setVisible(False)
+
+        self.btn_night_mode.clicked.connect(self.toggle_nightmode)
+        self.btn_night_mode.setCheckable(True)
+        # self.btn_night_mode.setChecked(True)
 
         self.actionFrameless_Window.triggered.connect(self.change_frameless)
 
@@ -238,7 +245,24 @@ class MainWindow(QMainWindow):
         version_check_thread = drachenjaeger.NotifyNewVersionThread()
         version_check_thread.newer_version.connect(self.notify_newer_version)
         version_check_thread.run()
-        
+
+    def toggle_nightmode(self, pressed):
+        if pressed:
+            self.set_style_dark()
+        else:
+            self.set_style_light()
+
+    def set_style_dark(self):
+        self.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+        self.map.page().set_style('dark')
+
+    def set_style_light(self):
+        self.setStyleSheet('')
+        self.map.page().set_style('light')
+
+    def update_evetime(self):
+        self.evetime_label.setText(datetime.datetime.utcnow().strftime('Current EVE Time: %X'))
+
     def notify_newer_version(self, newest_version):
         self.trayicon.showMessage("Newer Version", 
                 ("A newer Version of VINTEL is available.\n"
@@ -722,6 +746,13 @@ class MainWindowPage(QWebEnginePage):
         self.m_pView.page().setHtml(self.__client_html())
         self.channel.registerObject('VIntelAPI', self.bridge)
 
+        self.styles = {}
+        for stype in 'dark', 'light':
+            with open(resource_path('vi/ui/res/style-{0}.css'.format(stype))) as src_file:
+                self.styles['style_' + stype] = src_file.read()
+
+        self.set_style('light')
+
     def acceptNavigationRequest(self, url, nav_type, is_main):
         return False
 
@@ -778,6 +809,12 @@ class MainWindowPage(QWebEnginePage):
         })
         self.bridge.to_page(str)
 
+    def set_style(self, style_type):
+        self.bridge.to_page(json.dumps({
+            'type':    'set_style',
+            'style':   self.styles['style_'+style_type]
+        }))
+
     def page_event(self, e):
         if isinstance(e, dict):
             if 'type' in e:
@@ -807,12 +844,15 @@ class MainWindowPage(QWebEnginePage):
         return script
 
     @staticmethod
+    def __client_style():
+        log.debug('test')
+
+    @staticmethod
     def __client_html():
         return '''
 <!DOCTYPE html>
 <html>
 <head>
-    <!-- <script type="text/javascript" src="https://getfirebug.com/firebug-lite.js#disableXHRListener=true,overrideConsole=false,startOpened=true"></script> -->
     <script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <style type="text/css">
         .sys .so, .sys .er { display: none; }

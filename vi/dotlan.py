@@ -21,19 +21,20 @@
 # Little lib and tool to get the map and information from dotlan          #
 ###########################################################################
 
-import math
-import time
-import requests
 import logging
+import math
 import re
+import time
 
 import bs4
+import requests
 from bs4 import BeautifulSoup
 
-from vi.cache.cache import Cache
-from vi import states
 import vi.drachenjaeger
 import vi.evegate
+from vi import states
+from vi.cache.cache import Cache
+
 # from PyQt5 import QtCore
 # from PyQt5.QtCore import QObject, pyqtSignal
 
@@ -74,6 +75,10 @@ class Map(object):
 
         return str(self.soup)
 
+    @property
+    def svg_clean(self):
+        return str(self.soup)
+
     def __init__(self, region, svg_file=None):
         # QObject.__init__(self)
 
@@ -85,6 +90,7 @@ class Map(object):
             svg = cache.get_from_cache("map_" + self.region)
         else:
             svg = svg_file
+
         if not svg:
             try:
                 svg = self._get_svg_from_dotlan(self.region)
@@ -156,6 +162,10 @@ class Map(object):
                 element['data-systemname'] = name
                 element['data-systemid'] = systemid
                 del element['target']
+
+                for sub_elm in element.select(".s"):
+                    if sub_elm['class'] == 's':
+                        del sub_elm['style']
 
                 map_coordinates = {}
                 for keyname in ("x", "y", "width", "height"):
@@ -246,10 +256,14 @@ class Map(object):
         for elm in self.soup.find_all('script'):
             elm.extract()
 
+        for elm in self.soup.find_all('style'):
+            elm.extract()
+
         svg = soup.select("svg")[0]
         # svg["onmousedown"] = "return false;"
         del svg["onmousedown"]
         del svg["onload"]
+        del svg["style"]
 
         # qrc:///qtwebchannel/qwebchannel.js
         # http://doc.qt.io/qt-5/qtwebchannel-javascript.html
@@ -330,7 +344,7 @@ class System(object):
         self.second_line = svg_element.select("text")[1]
         self.last_alarm_time   = 0
         self.messages    = []
-        self.set_status(states.UNKNOWN)
+        # self.set_status(states.UNKNOWN)
         self.__located_characters = []
         self.background_color = "#FFFFFF"
         self.map_coordinates  = map_coordinates
@@ -339,7 +353,9 @@ class System(object):
         self.statistics       = {"jumps": "?", "shipkills": "?", "factionkills": "?", "podkills": "?"}
 
     def set_jumpbridge_color(self, color):
-        idname = self.name + u"_jb_marker"
+        log.debug(self.name)
+
+        idname = self.name + "_jb_marker"
         for element in self.mapsoup.select(u"#" + idname):
             element.decompose()
         coords = self.map_coordinates
@@ -352,6 +368,8 @@ class System(object):
         jumps.insert(0, tag)
    
     def mark(self):
+        log.debug(self.name)
+
         marker = self.mapsoup.select("#select_marker")[0]
         x = self.map_coordinates["center_x"]
         y = self.map_coordinates["center_y"]
@@ -360,6 +378,8 @@ class System(object):
         marker["activated"] = time.time()
         
     def add_located_character(self, charname):
+        log.debug(self.name)
+
         idname = self.name + "_loc"
         was_located = bool(self.__located_characters)
         if charname not in self.__located_characters:
@@ -379,17 +399,23 @@ class System(object):
             jumps.insert(0, new_tag)
             
     def set_background_color(self, color):
+        log.debug(self.name)
+
         for rect in self.svg_element("rect"):
             if "location" not in rect.get("class", []) and "marked" not in rect.get("class", []):
                 rect["style"] = "fill: {0};".format(color)
             
     def get_located_characters(self):
+        log.debug(self.name)
+
         characters = []
         for c in self.__located_characters:
             characters.append(c)
         return characters
 
     def remove_located_character(self, charname):
+        log.debug(self.name)
+
         idname = self.name + "_loc"
         if charname in self.__located_characters:
             self.__located_characters.remove(charname)
@@ -398,12 +424,16 @@ class System(object):
                     element.decompose()
 
     def add_neighbour(self, neighbour_system):
+        # log.debug(self.name)
+
         """Add a neigbour system to this system
            neighbour_system: a system (not a system's name!)"""
         self._neighbours.add(neighbour_system)
         neighbour_system._neighbours.add(self)
 
     def get_neighbours(self, distance=1):
+        log.debug(self.name)
+
         """ Get all neigboured system with a distance of distance.
             example: sys1 <-> sys2 <-> sys3 <-> sys4 <-> sys5
                      sys3(distance=1) will find sys2, sys3, sys4
@@ -427,6 +457,8 @@ class System(object):
         return systems
 
     def remove_neighbour(self, system):
+        log.debug(self.name)
+
         """ removes the link between to neighboured systems """
         if system in self._neighbours:
             self._neighbours.remove(system)
@@ -434,6 +466,8 @@ class System(object):
             system._neigbours.remove(self)
         
     def set_status(self, new_status):
+        log.debug(self.name)
+
         if new_status == states.ALARM:
             self.last_alarm_time = time.time()
             if "stopwatch" not in self.second_line["class"]:
@@ -464,6 +498,8 @@ class System(object):
             self.status = new_status
             
     def set_statistics(self, statistics):
+        log.debug(self.name)
+
         if statistics is None:
             text = "stats n/a"
         else:
@@ -473,6 +509,8 @@ class System(object):
         svgtext.string = text
         
     def update(self):
+        log.debug(self.name)
+
         # state changed?
         if self.status == states.ALARM:
             alarmtime = time.time() - self.last_alarm_time
